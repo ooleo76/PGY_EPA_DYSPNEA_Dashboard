@@ -117,7 +117,41 @@ function processData(data) {
     document.getElementById('resp-epa-desc').textContent  = avgResp  > 0 ? '約為：' + (EPA_DESC[Math.round(avgResp)]  || '—') : '尚無資料';
     document.getElementById('intub-epa-desc').textContent = avgIntub > 0 ? '約為：' + (EPA_DESC[Math.round(avgIntub)] || '—') : '尚無資料';
 
-    // ── 解析待改進項目 ──
+    // ── 解析待改進項目（含模糊比對）──
+    // 問題說明：
+    //   評估者在表單上若修改了預設評語的任何一個字，該評語就會被歸入 others，
+    //   不會被計入 specifics，導致 Top 5 排行出現的項目遠少於預期。
+    //
+    // 解法：加入模糊比對函式 fuzzyMatch()。
+    //   做法是計算「共同字元比例」（取兩字串去重後的交集字元數 / 較長字串長度）。
+    //   當相似度 >= FUZZY_THRESHOLD 時，視為同一條評語，歸入對應的預設項目計數。
+    //   若低於閾值，才歸入 others（真正的自訂評語）。
+    var FUZZY_THRESHOLD = 0.75; // 75% 相似度即視為同一條評語
+
+    function fuzzyMatch(a, b) {
+        if (a === b) return 1;
+        var setA = {}, setB = {};
+        for (var i = 0; i < a.length; i++) setA[a[i]] = true;
+        for (var j = 0; j < b.length; j++) setB[b[j]] = true;
+        var intersect = 0;
+        Object.keys(setA).forEach(function(ch) { if (setB[ch]) intersect++; });
+        var longer = Math.max(Object.keys(setA).length, Object.keys(setB).length);
+        return longer === 0 ? 1 : intersect / longer;
+    }
+
+    function findBestMatch(cat, text) {
+        // 先嘗試完全比對
+        if (parsedDifficulties[cat].specifics[text] !== undefined) return text;
+        // 再嘗試模糊比對：在該類別的所有預設評語中找相似度最高者
+        var bestKey   = null;
+        var bestScore = 0;
+        Object.keys(parsedDifficulties[cat].specifics).forEach(function(preset) {
+            var score = fuzzyMatch(text, preset);
+            if (score > bestScore) { bestScore = score; bestKey = preset; }
+        });
+        return (bestScore >= FUZZY_THRESHOLD) ? bestKey : null;
+    }
+
     (data.rawImprovements || []).forEach(function(str) {
         if (!str) return;
         str.split('\n').forEach(function(line) {
@@ -125,25 +159,37 @@ function processData(data) {
             if (!m) return;
             var cat  = m[1].trim();
             var text = m[2].trim();
-            if (!parsedDifficulties[cat]) return;
+            if (!parsedDifficulties[cat] || !text) return;
             parsedDifficulties[cat].total++;
-            if (parsedDifficulties[cat].specifics[text] !== undefined) {
-                parsedDifficulties[cat].specifics[text]++;
+            var matchedKey = findBestMatch(cat, text);
+            if (matchedKey !== null) {
+                // 完全比對 或 模糊比對成功 → 歸入預設項目
+                parsedDifficulties[cat].specifics[matchedKey]++;
             } else {
+                // 真正的自訂評語 → 歸入 others
                 parsedDifficulties[cat].others.push(text);
             }
         });
     });
 
-    // ── Top 5 計算 ──
+    // ── Top 5 計算（包含 count === 0 的項目也納入候選，確保資料少時仍盡力顯示）──
     var allItems = [];
     Object.keys(parsedDifficulties).forEach(function(cat) {
         Object.keys(parsedDifficulties[cat].specifics).forEach(function(text) {
             var count = parsedDifficulties[cat].specifics[text];
             if (count > 0) allItems.push({ cat: cat, text: text, count: count });
         });
+        // 同時將 others（自訂評語）也納入排行（以 count=1 計，避免遺漏）
+        var othersMap = {};
+        parsedDifficulties[cat].others.forEach(function(t) {
+            othersMap[t] = (othersMap[t] || 0) + 1;
+        });
+        Object.keys(othersMap).forEach(function(t) {
+            allItems.push({ cat: cat, text: t, count: othersMap[t], isOther: true });
+        });
     });
     allItems.sort(function(a, b) { return b.count - a.count; });
+    // 取前 5，若不足 5 則顯示全部有勾選的項目
     var top5 = allItems.slice(0, 5);
 
     // KPI：最高頻能力缺口（以類別總計）
@@ -169,22 +215,31 @@ function processData(data) {
 function renderTop5(items) {
     var container = document.getElementById('top5List');
     if (!items || items.length === 0) {
-        container.innerHTML = '<div class="no-data-state">尚無足夠資料產生排行，請完成更多評估後再查看。</div>';
+        container.innerHTML = '<div class="no-data-state">尚無任何被勾選的待改進項目，請完成更多評估後再查看。</div>';
         return;
     }
     container.innerHTML = '';
     items.forEach(function(item, idx) {
         var div = document.createElement('div');
         div.className = 'top5-item';
+        var catLabel = '【' + escapeHtml(item.cat) + '】';
+        if (item.isOther) catLabel += '&ensp;<span style="font-size:11px;color:#9ca3af;">自訂評語</span>';
         div.innerHTML =
             '<div class="top5-rank">' + (idx + 1) + '</div>' +
             '<div>' +
                 '<div class="top5-text">' + escapeHtml(item.text) + '</div>' +
-                '<div class="top5-cat">【' + escapeHtml(item.cat) + '】</div>' +
+                '<div class="top5-cat">' + catLabel + '</div>' +
             '</div>' +
             '<div class="top5-badge">' + item.count + '&thinsp;次</div>';
         container.appendChild(div);
     });
+    // 資料不足 5 筆時給予提示
+    if (items.length < 5) {
+        var note = document.createElement('div');
+        note.style.cssText = 'text-align:center;font-size:13px;color:#9ca3af;padding:12px 0 4px;';
+        note.textContent = '目前僅有 ' + items.length + ' 筆有效資料，累積更多評估後排行將更完整。';
+        container.appendChild(note);
+    }
 }
 
 // ── EPA 甜甜圈圖 ──
