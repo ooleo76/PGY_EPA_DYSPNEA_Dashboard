@@ -15,14 +15,45 @@
             <p id="total-count">資料載入中...</p>
         </div>
         
-        <div class="charts-wrapper">
-            <div class="chart-card">
-                <h3>呼吸困難評估 EPA 分布</h3>
-                <canvas id="respChart"></canvas>
+        <div class="major-section">
+            <h2 class="section-title">一、呼吸困難評估</h2>
+            <div class="charts-wrapper">
+                <div class="chart-card">
+                    <h3>EPA 分布</h3>
+                    <div class="canvas-container"><canvas id="respEpaChart"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3>臨床困境 (各階段發生次數) <br><span style="font-size:12px;color:#666;">※點擊圖表長條可查看細節※</span></h3>
+                    <div class="canvas-container"><canvas id="respDiffChart"></canvas></div>
+                </div>
             </div>
-            <div class="chart-card">
-                <h3>氣管內管插管 EPA 分布</h3>
-                <canvas id="intubChart"></canvas>
+        </div>
+
+        <div class="major-section">
+            <h2 class="section-title">二、氣管內管插管</h2>
+            <div class="charts-wrapper">
+                <div class="chart-card">
+                    <h3>EPA 分布</h3>
+                    <div class="canvas-container"><canvas id="intubEpaChart"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3>臨床困境 (各階段發生次數) <br><span style="font-size:12px;color:#666;">※點擊圖表長條可查看細節※</span></h3>
+                    <div class="canvas-container"><canvas id="intubDiffChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">項目細節分析</h2>
+            <div class="modal-chart-container">
+                <canvas id="modalChart"></canvas>
+            </div>
+            <div class="other-comments">
+                <h3>其他自訂評語 / 修改後評語：</h3>
+                <ul id="otherCommentsList"></ul>
             </div>
         </div>
     </div>
