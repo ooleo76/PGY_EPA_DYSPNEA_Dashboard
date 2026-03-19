@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGY 教學成效儀表板</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <h1>PGY 呼吸道處置 教學成效儀表板</h1>
+        <div class="summary-box">
+            <h2>總評估份數</h2>
+            <p id="total-count">資料載入中...</p>
+        </div>
+        
+        <div class="charts-wrapper">
+            <div class="chart-card">
+                <h3>呼吸困難評估 EPA 分布</h3>
+                <canvas id="respChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>氣管內管插管 EPA 分布</h3>
+                <canvas id="intubChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
