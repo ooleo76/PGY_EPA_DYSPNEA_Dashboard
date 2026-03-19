@@ -4,171 +4,172 @@
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx_HP26PxVSXpqc5Ap_C3MiOPv76uzvaJYcRe3OghOtGKXjL1JHT6a7Cw6Vnd_4l9KojA/exec";
 // ============================================================
 
-// ── EPA 等級描述 ──
-const EPA_DESC = {
-    1: '僅供觀察',
-    2: '主動監督',
-    3: '反應性監督',
-    4: '獨立執行',
-    5: '可指導他人'
+// ── EPA 等級文字描述 ──
+var EPA_DESC = { 1:'僅供觀察', 2:'主動監督', 3:'反應性監督', 4:'獨立執行', 5:'可指導他人' };
+
+// ── 預設評語對照表（與評估表單一致，用於歸類「其他/修改」項目）──
+var predefinedTexts = {
+    "病史收集":  ["病史收集不完整，需要更詳細詢問相關症狀","需要加強詢問過去病史與用藥史","應詢問症狀發生的時間序列與誘發因子","如果有擔心的疾病，可重點針其併發的症狀做詢問","在病人出現危急狀況時，需要以快速、重點的方式來取得資訊"],
+    "理學檢查":  ["呼吸道評估不完整，醒著病人可請其咳嗽評估","體液評估不足(水腫等)","如擔心貧血，可以直接看conjunctiva","生命徵象監測與評估需要更積極","擔心酸鹼問題，可以注意是否有kussmaul breathing"],
+    "處置與治療":["急性病人處置反應過慢，需要更迅速行動","氧氣治療策略可更靈活，可先給予高濃度氧氣(如VM 50%或NRM)，再依反應逐步下調","對於COPD急性惡化病人，當呼吸費力或低血氧時，不應固守SpO2 88-92%的目標，仍需優先矯正低血氧","升階抗生素不急迫，會浪費人力資源","給氧氣後仍需等待一段時間才會有反應"],
+    "檢驗檢查":  ["抽血項目應對應可能的診斷，對於低血氧的病人，最重要的是ABG","ABG的判讀(PaO2, PaCO2, PF ratio)需要加強","檢查的判讀還需與臨床做結合，才能綜合判斷","檢查結果解讀不完整","CXR可以跟之前的做比較"],
+    "交班報告":  ["交班需要包含基本的資訊(如：病人基本資料、過去病史、目前狀況、治療計畫)","應學習整合資訊並講出評估結果(如：PNA in progression或Fluid overload)","交班結構可再加強，應包含評估、處置、反應、鑑別診斷與下一步計畫","交班內容組織不佳，缺乏邏輯性","交班缺乏臨床思維，僅報告數據"],
+    "插管前準備":["備物流程不夠熟練，應在開始前將所有器械(Endo, Blade, EtCO2等)準備齊全","器材規格與名稱需更熟悉(如Endo size：男7.5-8, 女7-7.5; Laryngoscope blade 3或4號)","Pre-oxygenation不確實，應使用NRM或BVM給予純氧至少2-3分鐘","擺位不當，忘記備中單等細節","使用BVM時未注意密合度，應練習正確的CE手勢或是雙人操作以防止漏氣","使用BVM時，如清醒病人可以自主呼吸，直接使用面罩罩住給予氧氣；如果直接bagging會造成病人不適"],
+    "藥物給予":  ["插管前未確認血壓","藥物劑量不熟悉，需熟記常用藥物劑量(如Propofol 1mg/kg, Dormicum 0.1-0.3mg/kg)","肌肉鬆弛劑劑量需熟記(如Succinylcholine 1.5mg/kg, Rocuronium 1mg/kg)","給藥前未確認病人體重，影響劑量準確性","備藥與給藥不同，下達醫囑時須包含\"藥物\"、\"劑量\"、\"途徑\"、\"頻次\"","常要給予Challenge fluid (如NS 500ml) 時機不當，應有休克或體液不足等證據支持"],
+    "插管技術":  ["Blade放置過深，應貼著舌頭根本處以利掀起會厭，避免佔據氣管內管置入空間","插管中若血氧下降，應立即暫停並確實使用BVM給氧","插管技巧需要更多練習","手握Endo的位置過低，會使插管過程中斷","插管時間過長，動作不夠流暢"],
+    "插管後評估":["插管後未立即監測生命徵象(特別是因正壓通氣及藥物影響下的血壓)","End-tidal CO2監測與判讀不熟(使用波形確認位置)","未安排或忘記追蹤CXR，以確認氣管內管深度(Carina上2-3cm)與併發症","可以先使用聽診確定是否有one lung intubation的問題","可以在建立呼吸道後適時重新追蹤ABG","回到疾病本身，針對導致插管的疾病做處理(如調整抗生素)"]
 };
 
-// ── 預設文字（與評估表單對應，用於比對是否為「其他」）──
-const predefinedTexts = {
-    "病史收集": ["病史收集不完整，需要更詳細詢問相關症狀", "需要加強詢問過去病史與用藥史", "應詢問症狀發生的時間序列與誘發因子", "如果有擔心的疾病，可重點針其併發的症狀做詢問", "在病人出現危急狀況時，需要以快速、重點的方式來取得資訊"],
-    "理學檢查": ["呼吸道評估不完整，醒著病人可請其咳嗽評估", "體液評估不足(水腫等)", "如擔心貧血，可以直接看conjunctiva", "生命徵象監測與評估需要更積極", "擔心酸鹼問題，可以注意是否有kussmaul breathing"],
-    "處置與治療": ["急性病人處置反應過慢，需要更迅速行動", "氧氣治療策略可更靈活，可先給予高濃度氧氣(如VM 50%或NRM)，再依反應逐步下調", "對於COPD急性惡化病人，當呼吸費力或低血氧時，不應固守SpO2 88-92%的目標，仍需優先矯正低血氧", "升階抗生素不急迫，會浪費人力資源", "給氧氣後仍需等待一段時間才會有反應"],
-    "檢驗檢查": ["抽血項目應對應可能的診斷，對於低血氧的病人，最重要的是ABG", "ABG的判讀(PaO2, PaCO2, PF ratio)需要加強", "檢查的判讀還需與臨床做結合，才能綜合判斷", "檢查結果解讀不完整", "CXR可以跟之前的做比較"],
-    "交班報告": ["交班需要包含基本的資訊(如：病人基本資料、過去病史、目前狀況、治療計畫)", "應學習整合資訊並講出評估結果(如：PNA in progression或Fluid overload)", "交班結構可再加強，應包含評估、處置、反應、鑑別診斷與下一步計畫", "交班內容組織不佳，缺乏邏輯性", "交班缺乏臨床思維，僅報告數據"],
-    "插管前準備": ["備物流程不夠熟練，應在開始前將所有器械(Endo, Blade, EtCO2等)準備齊全", "器材規格與名稱需更熟悉(如Endo size：男7.5-8, 女7-7.5; Laryngoscope blade 3或4號)", "Pre-oxygenation不確實，應使用NRM或BVM給予純氧至少2-3分鐘", "擺位不當，忘記備中單等細節", "使用BVM時未注意密合度，應練習正確的CE手勢或是雙人操作以防止漏氣", "使用BVM時，如清醒病人可以自主呼吸，直接使用面罩罩住給予氧氣；如果直接bagging會造成病人不適"],
-    "藥物給予": ["插管前未確認血壓", "藥物劑量不熟悉，需熟記常用藥物劑量(如Propofol 1mg/kg, Dormicum 0.1-0.3mg/kg)", "肌肉鬆弛劑劑量需熟記(如Succinylcholine 1.5mg/kg, Rocuronium 1mg/kg)", "給藥前未確認病人體重，影響劑量準確性", "備藥與給藥不同，下達醫囑時須包含\"藥物\"、\"劑量\"、\"途徑\"、\"頻次\"", "常要給予Challenge fluid (如NS 500ml) 時機不當，應有休克或體液不足等證據支持"],
-    "插管技術": ["Blade放置過深，應貼著舌頭根本處以利掀起會厭，避免佔據氣管內管置入空間", "插管中若血氧下降，應立即暫停並確實使用BVM給氧", "插管技巧需要更多練習", "手握Endo的位置過低，會使插管過程中斷", "插管時間過長，動作不夠流暢"],
-    "插管後評估": ["插管後未立即監測生命徵象(特別是因正壓通氣及藥物影響下的血壓)", "End-tidal CO2監測與判讀不熟(使用波形確認位置)", "未安排或忘記追蹤CXR，以確認氣管內管深度(Carina上2-3cm)與併發症", "可以先使用聽診確定是否有one lung intubation的問題", "可以在建立呼吸道後適時重新追蹤ABG", "回到疾病本身，針對導致插管的疾病做處理(如調整抗生素)"]
-};
+var respCategories  = ["病史收集","理學檢查","處置與治療","檢驗檢查","交班報告"];
+var intubCategories = ["插管前準備","藥物給予","插管技術","插管後評估"];
 
-const respCategories  = ["病史收集", "理學檢查", "處置與治療", "檢驗檢查", "交班報告"];
-const intubCategories = ["插管前準備", "藥物給予", "插管技術", "插管後評估"];
-
-// ── 資料容器 ──
-let parsedDifficulties = {};
-Object.keys(predefinedTexts).forEach(cat => {
+// ── 資料容器初始化 ──
+var parsedDifficulties = {};
+Object.keys(predefinedTexts).forEach(function(cat) {
     parsedDifficulties[cat] = { total: 0, specifics: {}, others: [] };
-    predefinedTexts[cat].forEach(text => parsedDifficulties[cat].specifics[text] = 0);
+    predefinedTexts[cat].forEach(function(text) {
+        parsedDifficulties[cat].specifics[text] = 0;
+    });
 });
 
-let currentModalChart = null;
+var currentModalChart = null;
 
 // ============================================================
-// ✅ 核心修正：改用 JSONP 方式請求 GAS，繞過瀏覽器 CORS 限制
-// fetch() 對 GAS 的 GET 請求會被瀏覽器阻擋（無法設定 Access-Control-Allow-Origin）
-// JSONP 改用動態 <script> 注入，不受同源政策限制
+// JSONP 資料載入
+// ──────────────────────────────────────────────────────────
+// 原因說明：瀏覽器對 fetch() 跨域 GET 的 CORS 規則，
+// 會在 GAS 回應時因缺少 Access-Control-Allow-Origin header 而報錯，
+// 且 GAS 無法自訂該 header。
+//
+// 解法：改用 JSONP（動態 <script> 注入），瀏覽器不對 script src 施加 CORS 檢查。
+// GAS 端的 doGet() 會偵測 ?callback=xxx 並回傳 xxx(json);
+//
+// 重要 Bug 修正（前版錯誤）：
+//   前版在 fetchDataViaJSONP() 中對 window[callbackName] 先賦值再覆寫，
+//   導致 origCallback 指向被覆寫後的版本，觸發無限遞迴，callback 永遠不執行。
+//   本版改為：只建立一個 window[callbackName]，內部統一處理 clearTimeout + 清理 + 呼叫。
 // ============================================================
-function fetchDataViaJSONP(url, callbackName, onSuccess, onError) {
-    // 建立全域 callback 函式
-    window[callbackName] = function(data) {
-        // 呼叫完成後清理
-        delete window[callbackName];
-        var scriptEl = document.getElementById('jsonp-script-' + callbackName);
-        if (scriptEl) scriptEl.remove();
+function fetchDataViaJSONP(url, onSuccess, onError) {
+    // 用時間戳確保每次 callback 名稱唯一，避免快取衝突
+    var cbName = 'pgyDashCb_' + Date.now();
+
+    var timeoutId = setTimeout(function() {
+        // 超時清理
+        if (window[cbName]) delete window[cbName];
+        var el = document.getElementById('jsonp_' + cbName);
+        if (el) el.remove();
+        if (onError) onError(new Error('JSONP request timed out after 12 seconds'));
+    }, 12000);
+
+    // 一次性定義 callback，內部 clearTimeout 後自行清理
+    window[cbName] = function(data) {
+        clearTimeout(timeoutId);
+        delete window[cbName];
+        var el = document.getElementById('jsonp_' + cbName);
+        if (el) el.remove();
         onSuccess(data);
     };
 
     var script = document.createElement('script');
-    script.id = 'jsonp-script-' + callbackName;
-    script.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'callback=' + callbackName;
+    script.id  = 'jsonp_' + cbName;
+    script.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'callback=' + cbName;
     script.onerror = function() {
-        delete window[callbackName];
+        clearTimeout(timeoutId);
+        delete window[cbName];
         script.remove();
-        if (onError) onError(new Error('JSONP request failed'));
-    };
-
-    // 設定 10 秒 timeout
-    var timeout = setTimeout(function() {
-        delete window[callbackName];
-        if (document.getElementById('jsonp-script-' + callbackName)) {
-            script.remove();
-        }
-        if (onError) onError(new Error('JSONP timeout'));
-    }, 10000);
-
-    // 成功後清除 timeout
-    var origCallback = window[callbackName];
-    window[callbackName] = function(data) {
-        clearTimeout(timeout);
-        origCallback(data);
+        if (onError) onError(new Error('JSONP script load error'));
     };
 
     document.body.appendChild(script);
 }
 
-// ── 入口：載入並處理資料 ──
-document.addEventListener("DOMContentLoaded", function() {
+// ── 主入口 ──
+document.addEventListener('DOMContentLoaded', function() {
     fetchDataViaJSONP(
         GAS_URL,
-        'pgyDashCallback_' + Date.now(),
         function(data) { processData(data); },
         function(err) {
-            console.error('資料載入失敗:', err);
-            document.getElementById('total-count').textContent = '載入失敗';
-            document.getElementById('avg-resp-epa').textContent = '—';
-            document.getElementById('avg-intub-epa').textContent = '—';
-            document.getElementById('top-issue-cat').textContent = '—';
-            document.getElementById('top5List').innerHTML = '<div class="no-data-state">⚠️ 無法連線至資料來源，請確認 GAS 部署網址是否正確。</div>';
+            console.error('[Dashboard] 資料載入失敗:', err);
+            showError(err.message);
         }
     );
 });
 
+// ── 錯誤狀態顯示 ──
+function showError(msg) {
+    ['total-count','avg-resp-epa','avg-intub-epa','top-issue-cat'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = '—';
+    });
+    var list = document.getElementById('top5List');
+    if (list) list.innerHTML = '<div class="error-state">資料載入失敗。請確認 GAS 已重新部署為新版本，且部署網址正確。<br><br>錯誤詳情：' + escapeHtml(msg) + '</div>';
+}
+
+// ── 資料處理 ──
 function processData(data) {
-    // ── KPI 指標 ──
+    // ── KPI ──
     document.getElementById('total-count').textContent = data.totalEvaluations + ' 份';
 
     var avgResp  = data.avgRespEpa  || 0;
     var avgIntub = data.avgIntubEpa || 0;
     document.getElementById('avg-resp-epa').textContent  = avgResp  > 0 ? avgResp.toFixed(1)  : '—';
     document.getElementById('avg-intub-epa').textContent = avgIntub > 0 ? avgIntub.toFixed(1) : '—';
+    document.getElementById('resp-epa-desc').textContent  = avgResp  > 0 ? '約為：' + (EPA_DESC[Math.round(avgResp)]  || '—') : '尚無資料';
+    document.getElementById('intub-epa-desc').textContent = avgIntub > 0 ? '約為：' + (EPA_DESC[Math.round(avgIntub)] || '—') : '尚無資料';
 
-    var respDesc  = avgResp  > 0 ? '約 ' + EPA_DESC[Math.round(avgResp)]  : '尚無資料';
-    var intubDesc = avgIntub > 0 ? '約 ' + EPA_DESC[Math.round(avgIntub)] : '尚無資料';
-    document.getElementById('resp-epa-desc').textContent  = respDesc;
-    document.getElementById('intub-epa-desc').textContent = intubDesc;
-
-    // ── 解析 improvements ──
-    (data.rawImprovements || []).forEach(function(impString) {
-        if (!impString) return;
-        impString.split('\n').forEach(function(line) {
-            var match = line.match(/^\[(.*?)\]\s*(.*)$/);
-            if (match) {
-                var cat  = match[1].trim();
-                var text = match[2].trim();
-                if (parsedDifficulties[cat]) {
-                    parsedDifficulties[cat].total++;
-                    if (parsedDifficulties[cat].specifics[text] !== undefined) {
-                        parsedDifficulties[cat].specifics[text]++;
-                    } else {
-                        parsedDifficulties[cat].others.push(text);
-                    }
-                }
+    // ── 解析待改進項目 ──
+    (data.rawImprovements || []).forEach(function(str) {
+        if (!str) return;
+        str.split('\n').forEach(function(line) {
+            var m = line.match(/^\[(.*?)\]\s*(.*)$/);
+            if (!m) return;
+            var cat  = m[1].trim();
+            var text = m[2].trim();
+            if (!parsedDifficulties[cat]) return;
+            parsedDifficulties[cat].total++;
+            if (parsedDifficulties[cat].specifics[text] !== undefined) {
+                parsedDifficulties[cat].specifics[text]++;
+            } else {
+                parsedDifficulties[cat].others.push(text);
             }
         });
     });
 
-    // ── Top 5 最高頻失誤 ──
+    // ── Top 5 計算 ──
     var allItems = [];
     Object.keys(parsedDifficulties).forEach(function(cat) {
         Object.keys(parsedDifficulties[cat].specifics).forEach(function(text) {
             var count = parsedDifficulties[cat].specifics[text];
-            if (count > 0) {
-                allItems.push({ cat: cat, text: text, count: count });
-            }
+            if (count > 0) allItems.push({ cat: cat, text: text, count: count });
         });
     });
     allItems.sort(function(a, b) { return b.count - a.count; });
     var top5 = allItems.slice(0, 5);
 
-    // KPI: 最高頻能力缺口
-    if (top5.length > 0) {
-        var topCat = top5[0].cat;
-        var topCount = parsedDifficulties[topCat].total;
-        document.getElementById('top-issue-cat').textContent = topCat;
-        document.getElementById('top-issue-count').textContent = '累計 ' + topCount + ' 次標記';
+    // KPI：最高頻能力缺口（以類別總計）
+    var catTotals = Object.keys(parsedDifficulties).map(function(cat) {
+        return { cat: cat, total: parsedDifficulties[cat].total };
+    });
+    catTotals.sort(function(a, b) { return b.total - a.total; });
+    if (catTotals.length > 0 && catTotals[0].total > 0) {
+        document.getElementById('top-issue-cat').textContent   = catTotals[0].cat;
+        document.getElementById('top-issue-count').textContent = '累計 ' + catTotals[0].total + ' 次標記';
     }
 
     renderTop5(top5);
 
-    // ── EPA 圖表 ──
+    // ── 圖表 ──
     drawEpaChart('respEpaChart',  data.epaStats.resp);
     drawEpaChart('intubEpaChart', data.epaStats.intub);
-
-    // ── 能力缺口圖表 ──
-    drawDiffOverviewChart('respDiffChart',  respCategories);
-    drawDiffOverviewChart('intubDiffChart', intubCategories);
+    drawDiffChart('respDiffChart',  respCategories);
+    drawDiffChart('intubDiffChart', intubCategories);
 }
 
-// ── 渲染 Top 5 排行 ──
+// ── Top 5 渲染 ──
 function renderTop5(items) {
     var container = document.getElementById('top5List');
     if (!items || items.length === 0) {
-        container.innerHTML = '<div class="no-data-state">尚無足夠資料產生排行。</div>';
+        container.innerHTML = '<div class="no-data-state">尚無足夠資料產生排行，請完成更多評估後再查看。</div>';
         return;
     }
     container.innerHTML = '';
@@ -181,24 +182,20 @@ function renderTop5(items) {
                 '<div class="top5-text">' + escapeHtml(item.text) + '</div>' +
                 '<div class="top5-cat">【' + escapeHtml(item.cat) + '】</div>' +
             '</div>' +
-            '<div class="top5-badge">' + item.count + ' 次</div>';
+            '<div class="top5-badge">' + item.count + '&thinsp;次</div>';
         container.appendChild(div);
     });
 }
 
 // ── EPA 甜甜圈圖 ──
 function drawEpaChart(canvasId, stats) {
-    var labels   = ['等級一', '等級二', '等級三', '等級四', '等級五'];
-    var dataVals = [stats['1'], stats['2'], stats['3'], stats['4'], stats['5']];
-    var colors   = ['#fca5a5', '#fdba74', '#fde68a', '#6ee7b7', '#93c5fd'];
-
     new Chart(document.getElementById(canvasId), {
         type: 'doughnut',
         data: {
-            labels: labels,
+            labels: ['等級一','等級二','等級三','等級四','等級五'],
             datasets: [{
-                data: dataVals,
-                backgroundColor: colors,
+                data: [stats['1'], stats['2'], stats['3'], stats['4'], stats['5']],
+                backgroundColor: ['#fca5a5','#fdba74','#fde68a','#6ee7b7','#93c5fd'],
                 borderColor: '#ffffff',
                 borderWidth: 2
             }]
@@ -206,17 +203,15 @@ function drawEpaChart(canvasId, stats) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            cutout: '62%',
+            cutout: '60%',
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { boxWidth: 10, padding: 10, font: { size: 11 }, color: '#6b7280' }
+                    labels: { boxWidth: 12, padding: 12, font: { size: 13, family: "'Noto Sans TC', sans-serif" }, color: '#4b5563' }
                 },
                 tooltip: {
                     callbacks: {
-                        label: function(ctx) {
-                            return ' ' + ctx.label + '：' + ctx.parsed + ' 人';
-                        }
+                        label: function(ctx) { return ' ' + ctx.label + '：' + ctx.parsed + ' 人'; }
                     }
                 }
             }
@@ -225,12 +220,14 @@ function drawEpaChart(canvasId, stats) {
 }
 
 // ── 能力缺口橫向長條圖 ──
-function drawDiffOverviewChart(canvasId, categories) {
-    var dataVals    = categories.map(function(cat) { return parsedDifficulties[cat].total; });
-    var maxVal      = Math.max.apply(null, dataVals) || 1;
-    var bgColors    = dataVals.map(function(v) {
-        var intensity = v / maxVal;
-        return 'rgba(220,' + Math.round(38 + (1 - intensity) * 80) + ',' + Math.round(38 + (1 - intensity) * 80) + ',' + (0.35 + intensity * 0.55) + ')';
+function drawDiffChart(canvasId, categories) {
+    var dataVals = categories.map(function(cat) { return parsedDifficulties[cat].total; });
+    var maxVal   = Math.max.apply(null, dataVals) || 1;
+    // 顏色熱力：次數越高顏色越深（紅色調）
+    var bgColors = dataVals.map(function(v) {
+        var t = v / maxVal; // 0~1
+        var alpha = 0.30 + t * 0.60;
+        return 'rgba(220,38,38,' + alpha + ')';
     });
 
     new Chart(document.getElementById(canvasId), {
@@ -241,9 +238,9 @@ function drawDiffOverviewChart(canvasId, categories) {
                 label: '待改進次數',
                 data: dataVals,
                 backgroundColor: bgColors,
-                borderColor: 'rgba(220,38,38,0.7)',
+                borderColor: 'rgba(220,38,38,0.75)',
                 borderWidth: 1,
-                borderRadius: 4
+                borderRadius: 5
             }]
         },
         options: {
@@ -261,18 +258,16 @@ function drawDiffOverviewChart(canvasId, categories) {
             scales: {
                 x: {
                     beginAtZero: true,
-                    ticks: { precision: 0, color: '#9ca3af', font: { size: 11 } },
+                    ticks: { precision: 0, color: '#9ca3af', font: { size: 13 } },
                     grid: { color: '#f3f4f6' }
                 },
                 y: {
-                    ticks: { color: '#374151', font: { size: 12 } },
+                    ticks: { color: '#111827', font: { size: 14, weight: '500' } },
                     grid: { display: false }
                 }
             },
             onClick: function(e, elements) {
-                if (elements.length > 0) {
-                    openModal(categories[elements[0].index]);
-                }
+                if (elements.length > 0) openModal(categories[elements[0].index]);
             }
         }
     });
@@ -281,17 +276,16 @@ function drawDiffOverviewChart(canvasId, categories) {
 // ── 細節 Modal ──
 function openModal(category) {
     document.getElementById('modalTitle').textContent = '【' + category + '】 失誤細節分析';
-    var catData = parsedDifficulties[category];
-
-    // 準備圖表資料：截斷超長文字作為 label，保留完整文字作為 tooltip
+    var catData    = parsedDifficulties[category];
     var fullTexts  = Object.keys(catData.specifics);
+    var counts     = Object.values(catData.specifics);
+
+    // y 軸 label：超過 16 字自動折行（Chart.js 支援 array label）
     var shortLabels = fullTexts.map(function(t) {
-        // 每 15 個字換一行顯示於 y 軸（Chart.js 支援 array label 自動換行）
-        var words = [];
-        for (var i = 0; i < t.length; i += 15) words.push(t.substring(i, i + 15));
-        return words;
+        var parts = [];
+        for (var i = 0; i < t.length; i += 16) parts.push(t.substring(i, i + 16));
+        return parts;
     });
-    var counts = Object.values(catData.specifics);
 
     if (currentModalChart) currentModalChart.destroy();
 
@@ -303,7 +297,7 @@ function openModal(category) {
                 label: '發生次數',
                 data: counts,
                 backgroundColor: 'rgba(220,38,38,0.55)',
-                borderColor: 'rgba(220,38,38,0.9)',
+                borderColor: 'rgba(220,38,38,0.90)',
                 borderWidth: 1,
                 borderRadius: 4
             }]
@@ -324,22 +318,21 @@ function openModal(category) {
             scales: {
                 x: {
                     beginAtZero: true,
-                    ticks: { precision: 0, color: '#9ca3af', font: { size: 11 } },
+                    ticks: { precision: 0, color: '#9ca3af', font: { size: 13 } },
                     grid: { color: '#f9fafb' }
                 },
                 y: {
-                    ticks: { color: '#374151', font: { size: 11 } },
+                    ticks: { color: '#111827', font: { size: 13 } },
                     grid: { display: false }
                 }
             }
         }
     });
 
-    // 其他自訂評語
+    // 其他/修改後評語
     var listEl = document.getElementById('otherCommentsList');
-    var block   = document.getElementById('otherCommentsBlock');
+    var block  = document.getElementById('otherCommentsBlock');
     listEl.innerHTML = '';
-
     if (catData.others.length === 0) {
         block.style.display = 'none';
     } else {
@@ -358,16 +351,13 @@ function closeModal() {
     document.getElementById('detailModal').classList.remove('open');
 }
 
-// 點擊 Modal 遮罩關閉
 function handleModalClick(event) {
     if (event.target === document.getElementById('detailModal')) closeModal();
 }
 
 // ── 工具函式 ──
-function escapeHtml(text) {
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
