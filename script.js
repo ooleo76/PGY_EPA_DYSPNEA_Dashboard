@@ -1,12 +1,19 @@
 // ============================================================
 // ▼▼▼ 設定區：請填入您的 GAS 部署網址 ▼▼▼
 // ============================================================
-const GAS_URL = "https://script.google.com/macros/s/AKfycbx_HP26PxVSXpqc5Ap_C3MiOPv76uzvaJYcRe3OghOtGKXjL1JHT6a7Cw6Vnd_4l9KojA/exec"; 
+const GAS_URL = "https://script.google.com/macros/s/AKfycbx_HP26PxVSXpqc5Ap_C3MiOPv76uzvaJYcRe3OghOtGKXjL1JHT6a7Cw6Vnd_4l9KojA/exec";
 // ============================================================
 
-let currentModalChart = null;
+// ── EPA 等級描述 ──
+const EPA_DESC = {
+    1: '僅供觀察',
+    2: '主動監督',
+    3: '反應性監督',
+    4: '獨立執行',
+    5: '可指導他人'
+};
 
-// 將表單的原始語句寫死在這裡，以供比對。如果有修改的文字就會被歸類在「其他」。
+// ── 預設文字（與評估表單對應，用於比對是否為「其他」）──
 const predefinedTexts = {
     "病史收集": ["病史收集不完整，需要更詳細詢問相關症狀", "需要加強詢問過去病史與用藥史", "應詢問症狀發生的時間序列與誘發因子", "如果有擔心的疾病，可重點針其併發的症狀做詢問", "在病人出現危急狀況時，需要以快速、重點的方式來取得資訊"],
     "理學檢查": ["呼吸道評估不完整，醒著病人可請其咳嗽評估", "體液評估不足(水腫等)", "如擔心貧血，可以直接看conjunctiva", "生命徵象監測與評估需要更積極", "擔心酸鹼問題，可以注意是否有kussmaul breathing"],
@@ -19,125 +26,225 @@ const predefinedTexts = {
     "插管後評估": ["插管後未立即監測生命徵象(特別是因正壓通氣及藥物影響下的血壓)", "End-tidal CO2監測與判讀不熟(使用波形確認位置)", "未安排或忘記追蹤CXR，以確認氣管內管深度(Carina上2-3cm)與併發症", "可以先使用聽診確定是否有one lung intubation的問題", "可以在建立呼吸道後適時重新追蹤ABG", "回到疾病本身，針對導致插管的疾病做處理(如調整抗生素)"]
 };
 
-const respCategories = ["病史收集", "理學檢查", "處置與治療", "檢驗檢查", "交班報告"];
+const respCategories  = ["病史收集", "理學檢查", "處置與治療", "檢驗檢查", "交班報告"];
 const intubCategories = ["插管前準備", "藥物給予", "插管技術", "插管後評估"];
 
-// 建立資料容器
+// ── 資料容器 ──
 let parsedDifficulties = {};
 Object.keys(predefinedTexts).forEach(cat => {
     parsedDifficulties[cat] = { total: 0, specifics: {}, others: [] };
     predefinedTexts[cat].forEach(text => parsedDifficulties[cat].specifics[text] = 0);
 });
 
-document.addEventListener("DOMContentLoaded", () => {
-    fetch(GAS_URL)
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('total-count').innerText = data.totalEvaluations + " 份";
-            
-            // 處理 EPA 圖表
-            drawEpaChart('respEpaChart', data.epaStats.resp);
-            drawEpaChart('intubEpaChart', data.epaStats.intub);
+let currentModalChart = null;
 
-            // 解析臨床困境文字
-            data.rawImprovements.forEach(impString => {
-                if(!impString) return;
-                const lines = impString.split('\n');
-                lines.forEach(line => {
-                    const match = line.match(/^\[(.*?)\]\s*(.*)$/);
-                    if (match) {
-                        const cat = match[1].trim();
-                        const text = match[2].trim();
-                        if (parsedDifficulties[cat]) {
-                            parsedDifficulties[cat].total++;
-                            if (parsedDifficulties[cat].specifics[text] !== undefined) {
-                                parsedDifficulties[cat].specifics[text]++;
-                            } else {
-                                parsedDifficulties[cat].others.push(text);
-                            }
-                        }
-                    }
-                });
-            });
+// ============================================================
+// ✅ 核心修正：改用 JSONP 方式請求 GAS，繞過瀏覽器 CORS 限制
+// fetch() 對 GAS 的 GET 請求會被瀏覽器阻擋（無法設定 Access-Control-Allow-Origin）
+// JSONP 改用動態 <script> 注入，不受同源政策限制
+// ============================================================
+function fetchDataViaJSONP(url, callbackName, onSuccess, onError) {
+    // 建立全域 callback 函式
+    window[callbackName] = function(data) {
+        // 呼叫完成後清理
+        delete window[callbackName];
+        var scriptEl = document.getElementById('jsonp-script-' + callbackName);
+        if (scriptEl) scriptEl.remove();
+        onSuccess(data);
+    };
 
-            // 繪製臨床困境總計長條圖
-            drawDiffOverviewChart('respDiffChart', respCategories);
-            drawDiffOverviewChart('intubDiffChart', intubCategories);
-        })
-        .catch(error => {
-            console.error("載入數據失敗:", error);
-            document.getElementById('total-count').innerText = "載入失敗";
-        });
+    var script = document.createElement('script');
+    script.id = 'jsonp-script-' + callbackName;
+    script.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'callback=' + callbackName;
+    script.onerror = function() {
+        delete window[callbackName];
+        script.remove();
+        if (onError) onError(new Error('JSONP request failed'));
+    };
+
+    // 設定 10 秒 timeout
+    var timeout = setTimeout(function() {
+        delete window[callbackName];
+        if (document.getElementById('jsonp-script-' + callbackName)) {
+            script.remove();
+        }
+        if (onError) onError(new Error('JSONP timeout'));
+    }, 10000);
+
+    // 成功後清除 timeout
+    var origCallback = window[callbackName];
+    window[callbackName] = function(data) {
+        clearTimeout(timeout);
+        origCallback(data);
+    };
+
+    document.body.appendChild(script);
+}
+
+// ── 入口：載入並處理資料 ──
+document.addEventListener("DOMContentLoaded", function() {
+    fetchDataViaJSONP(
+        GAS_URL,
+        'pgyDashCallback_' + Date.now(),
+        function(data) { processData(data); },
+        function(err) {
+            console.error('資料載入失敗:', err);
+            document.getElementById('total-count').textContent = '載入失敗';
+            document.getElementById('avg-resp-epa').textContent = '—';
+            document.getElementById('avg-intub-epa').textContent = '—';
+            document.getElementById('top-issue-cat').textContent = '—';
+            document.getElementById('top5List').innerHTML = '<div class="no-data-state">⚠️ 無法連線至資料來源，請確認 GAS 部署網址是否正確。</div>';
+        }
+    );
 });
 
-// 繪製 EPA 甜甜圈圖 (設定 Legend 縮小以防止手機跨行)
+function processData(data) {
+    // ── KPI 指標 ──
+    document.getElementById('total-count').textContent = data.totalEvaluations + ' 份';
+
+    var avgResp  = data.avgRespEpa  || 0;
+    var avgIntub = data.avgIntubEpa || 0;
+    document.getElementById('avg-resp-epa').textContent  = avgResp  > 0 ? avgResp.toFixed(1)  : '—';
+    document.getElementById('avg-intub-epa').textContent = avgIntub > 0 ? avgIntub.toFixed(1) : '—';
+
+    var respDesc  = avgResp  > 0 ? '約 ' + EPA_DESC[Math.round(avgResp)]  : '尚無資料';
+    var intubDesc = avgIntub > 0 ? '約 ' + EPA_DESC[Math.round(avgIntub)] : '尚無資料';
+    document.getElementById('resp-epa-desc').textContent  = respDesc;
+    document.getElementById('intub-epa-desc').textContent = intubDesc;
+
+    // ── 解析 improvements ──
+    (data.rawImprovements || []).forEach(function(impString) {
+        if (!impString) return;
+        impString.split('\n').forEach(function(line) {
+            var match = line.match(/^\[(.*?)\]\s*(.*)$/);
+            if (match) {
+                var cat  = match[1].trim();
+                var text = match[2].trim();
+                if (parsedDifficulties[cat]) {
+                    parsedDifficulties[cat].total++;
+                    if (parsedDifficulties[cat].specifics[text] !== undefined) {
+                        parsedDifficulties[cat].specifics[text]++;
+                    } else {
+                        parsedDifficulties[cat].others.push(text);
+                    }
+                }
+            }
+        });
+    });
+
+    // ── Top 5 最高頻失誤 ──
+    var allItems = [];
+    Object.keys(parsedDifficulties).forEach(function(cat) {
+        Object.keys(parsedDifficulties[cat].specifics).forEach(function(text) {
+            var count = parsedDifficulties[cat].specifics[text];
+            if (count > 0) {
+                allItems.push({ cat: cat, text: text, count: count });
+            }
+        });
+    });
+    allItems.sort(function(a, b) { return b.count - a.count; });
+    var top5 = allItems.slice(0, 5);
+
+    // KPI: 最高頻能力缺口
+    if (top5.length > 0) {
+        var topCat = top5[0].cat;
+        var topCount = parsedDifficulties[topCat].total;
+        document.getElementById('top-issue-cat').textContent = topCat;
+        document.getElementById('top-issue-count').textContent = '累計 ' + topCount + ' 次標記';
+    }
+
+    renderTop5(top5);
+
+    // ── EPA 圖表 ──
+    drawEpaChart('respEpaChart',  data.epaStats.resp);
+    drawEpaChart('intubEpaChart', data.epaStats.intub);
+
+    // ── 能力缺口圖表 ──
+    drawDiffOverviewChart('respDiffChart',  respCategories);
+    drawDiffOverviewChart('intubDiffChart', intubCategories);
+}
+
+// ── 渲染 Top 5 排行 ──
+function renderTop5(items) {
+    var container = document.getElementById('top5List');
+    if (!items || items.length === 0) {
+        container.innerHTML = '<div class="no-data-state">尚無足夠資料產生排行。</div>';
+        return;
+    }
+    container.innerHTML = '';
+    items.forEach(function(item, idx) {
+        var div = document.createElement('div');
+        div.className = 'top5-item';
+        div.innerHTML =
+            '<div class="top5-rank">' + (idx + 1) + '</div>' +
+            '<div>' +
+                '<div class="top5-text">' + escapeHtml(item.text) + '</div>' +
+                '<div class="top5-cat">【' + escapeHtml(item.cat) + '】</div>' +
+            '</div>' +
+            '<div class="top5-badge">' + item.count + ' 次</div>';
+        container.appendChild(div);
+    });
+}
+
+// ── EPA 甜甜圈圖 ──
 function drawEpaChart(canvasId, stats) {
-    const labels = ['等級一', '等級二', '等級三', '等級四', '等級五'];
-    const dataVals = [stats['1'], stats['2'], stats['3'], stats['4'], stats['5']];
+    var labels   = ['等級一', '等級二', '等級三', '等級四', '等級五'];
+    var dataVals = [stats['1'], stats['2'], stats['3'], stats['4'], stats['5']];
+    var colors   = ['#fca5a5', '#fdba74', '#fde68a', '#6ee7b7', '#93c5fd'];
+
     new Chart(document.getElementById(canvasId), {
         type: 'doughnut',
         data: {
             labels: labels,
-            datasets: [{ data: dataVals, backgroundColor: ['#ff9999', '#ffcc99', '#ffff99', '#99ccff', '#99ff99'] }]
+            datasets: [{
+                data: dataVals,
+                backgroundColor: colors,
+                borderColor: '#ffffff',
+                borderWidth: 2
+            }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            cutout: '62%',
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { boxWidth: 10, padding: 8, font: { size: 11 } }
+                    labels: { boxWidth: 10, padding: 10, font: { size: 11 }, color: '#6b7280' }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            return ' ' + ctx.label + '：' + ctx.parsed + ' 人';
+                        }
+                    }
                 }
             }
         }
     });
 }
 
-// 繪製臨床困境總覽圖 (橫向長條圖)
+// ── 能力缺口橫向長條圖 ──
 function drawDiffOverviewChart(canvasId, categories) {
-    const dataVals = categories.map(cat => parsedDifficulties[cat].total);
-    const bgColors = categories.map(() => 'rgba(54, 162, 235, 0.6)');
-    const borderColors = categories.map(() => 'rgba(54, 162, 235, 1)');
+    var dataVals    = categories.map(function(cat) { return parsedDifficulties[cat].total; });
+    var maxVal      = Math.max.apply(null, dataVals) || 1;
+    var bgColors    = dataVals.map(function(v) {
+        var intensity = v / maxVal;
+        return 'rgba(220,' + Math.round(38 + (1 - intensity) * 80) + ',' + Math.round(38 + (1 - intensity) * 80) + ',' + (0.35 + intensity * 0.55) + ')';
+    });
 
-    const chart = new Chart(document.getElementById(canvasId), {
+    new Chart(document.getElementById(canvasId), {
         type: 'bar',
         data: {
             labels: categories,
-            datasets: [{ label: '待改進紀錄次數', data: dataVals, backgroundColor: bgColors, borderColor: borderColors, borderWidth: 1 }]
-        },
-        options: {
-            indexAxis: 'y', // 橫向顯示
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
-            onClick: (e, elements) => {
-                if (elements.length > 0) {
-                    const idx = elements[0].index;
-                    openModal(categories[idx]);
-                }
-            }
-        }
-    });
-}
-
-// 開啟細節 Modal
-function openModal(category) {
-    document.getElementById('modalTitle').innerText = `【${category}】 臨床困境細節分析`;
-    const catData = parsedDifficulties[category];
-    
-    // 準備 Modal 長條圖資料 (原始語句)
-    const specificLabels = Object.keys(catData.specifics).map(txt => txt.length > 15 ? txt.substring(0,15)+"..." : txt); // 太長截斷以利圖表顯示
-    const specificFullTexts = Object.keys(catData.specifics); // 留存完整文字用於 Tooltip
-    const specificCounts = Object.values(catData.specifics);
-
-    if (currentModalChart) currentModalChart.destroy();
-
-    currentModalChart = new Chart(document.getElementById('modalChart'), {
-        type: 'bar',
-        data: {
-            labels: specificLabels,
-            datasets: [{ label: '發生次數', data: specificCounts, backgroundColor: 'rgba(255, 99, 132, 0.6)', borderColor: 'rgba(255, 99, 132, 1)', borderWidth: 1 }]
+            datasets: [{
+                label: '待改進次數',
+                data: dataVals,
+                backgroundColor: bgColors,
+                borderColor: 'rgba(220,38,38,0.7)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
         },
         options: {
             indexAxis: 'y',
@@ -147,36 +254,120 @@ function openModal(category) {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
-                        title: (context) => specificFullTexts[context[0].dataIndex] // Tooltip顯示完整句子
+                        label: function(ctx) { return ' 累計 ' + ctx.parsed.x + ' 次'; }
                     }
                 }
             },
-            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: { precision: 0, color: '#9ca3af', font: { size: 11 } },
+                    grid: { color: '#f3f4f6' }
+                },
+                y: {
+                    ticks: { color: '#374151', font: { size: 12 } },
+                    grid: { display: false }
+                }
+            },
+            onClick: function(e, elements) {
+                if (elements.length > 0) {
+                    openModal(categories[elements[0].index]);
+                }
+            }
+        }
+    });
+}
+
+// ── 細節 Modal ──
+function openModal(category) {
+    document.getElementById('modalTitle').textContent = '【' + category + '】 失誤細節分析';
+    var catData = parsedDifficulties[category];
+
+    // 準備圖表資料：截斷超長文字作為 label，保留完整文字作為 tooltip
+    var fullTexts  = Object.keys(catData.specifics);
+    var shortLabels = fullTexts.map(function(t) {
+        // 每 15 個字換一行顯示於 y 軸（Chart.js 支援 array label 自動換行）
+        var words = [];
+        for (var i = 0; i < t.length; i += 15) words.push(t.substring(i, i + 15));
+        return words;
+    });
+    var counts = Object.values(catData.specifics);
+
+    if (currentModalChart) currentModalChart.destroy();
+
+    currentModalChart = new Chart(document.getElementById('modalChart'), {
+        type: 'bar',
+        data: {
+            labels: shortLabels,
+            datasets: [{
+                label: '發生次數',
+                data: counts,
+                backgroundColor: 'rgba(220,38,38,0.55)',
+                borderColor: 'rgba(220,38,38,0.9)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: function(ctx) { return fullTexts[ctx[0].dataIndex]; },
+                        label: function(ctx) { return ' 發生 ' + ctx.parsed.x + ' 次'; }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: { precision: 0, color: '#9ca3af', font: { size: 11 } },
+                    grid: { color: '#f9fafb' }
+                },
+                y: {
+                    ticks: { color: '#374151', font: { size: 11 } },
+                    grid: { display: false }
+                }
+            }
         }
     });
 
-    // 填入其他評語 (評分者自訂或修改過的)
-    const listHtml = document.getElementById('otherCommentsList');
-    listHtml.innerHTML = '';
+    // 其他自訂評語
+    var listEl = document.getElementById('otherCommentsList');
+    var block   = document.getElementById('otherCommentsBlock');
+    listEl.innerHTML = '';
+
     if (catData.others.length === 0) {
-        listHtml.innerHTML = '<li>無其他自訂評語</li>';
+        block.style.display = 'none';
     } else {
-        catData.others.forEach(txt => {
-            const li = document.createElement('li');
+        block.style.display = 'block';
+        catData.others.forEach(function(txt) {
+            var li = document.createElement('li');
             li.textContent = txt;
-            listHtml.appendChild(li);
+            listEl.appendChild(li);
         });
     }
 
-    document.getElementById('detailModal').style.display = 'block';
+    document.getElementById('detailModal').classList.add('open');
 }
 
 function closeModal() {
-    document.getElementById('detailModal').style.display = 'none';
+    document.getElementById('detailModal').classList.remove('open');
 }
 
-// 點擊 Modal 外部也可關閉
-window.onclick = function(event) {
-    const modal = document.getElementById('detailModal');
-    if (event.target == modal) modal.style.display = "none";
+// 點擊 Modal 遮罩關閉
+function handleModalClick(event) {
+    if (event.target === document.getElementById('detailModal')) closeModal();
+}
+
+// ── 工具函式 ──
+function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
